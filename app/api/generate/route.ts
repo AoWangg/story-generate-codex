@@ -66,8 +66,9 @@ Story:`;
       temperature: 0.7,
     });
 
-    // Create a ReadableStream to handle streaming response
-    const stream = new ReadableStream({
+    // Create a ReadableStream to handle streaming response (Edge requires bytes)
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
           for await (const chunk of response) {
@@ -75,7 +76,7 @@ Story:`;
             if (content) {
               // Send each chunk as JSON with story field
               const data = JSON.stringify({ story: content });
-              controller.enqueue(`data: ${data}\n\n`);
+              controller.enqueue(encoder.encode(`data: ${data}\n\n`));
             }
           }
           controller.close();
@@ -88,9 +89,9 @@ Story:`;
 
     return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
       },
     });
   } catch (error) {
