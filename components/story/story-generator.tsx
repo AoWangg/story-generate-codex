@@ -20,6 +20,7 @@ import { saveStory } from "@/lib/storage";
 import { getSupabase } from "@/lib/supabase";
 import ReactMarkdown from "react-markdown";
 import { StoryGenerationDialog } from "./story-generation-dialog";
+import { AuthModal } from "../auth/auth-modal";
 
 export function StoryGenerator() {
   const [theme, setTheme] = useState("");
@@ -30,6 +31,7 @@ export function StoryGenerator() {
   const [isLoading, setIsLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   // Check login status
@@ -71,21 +73,8 @@ export function StoryGenerator() {
   };
 
   const handleLogin = async () => {
-    // This will trigger the auth modal - you might need to import and use your auth modal component
-    const supabase = getSupabase();
-    if (!supabase) return;
-
-    try {
-      await supabase.auth.signInWithOAuth({
-        provider: "github",
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-    } catch (error) {
-      console.error("Login error:", error);
-      toast.error("Login failed, please try again");
-    }
+    // Open auth modal instead of OAuth
+    setAuthModalOpen(true);
   };
 
   const generateImage = async (
@@ -304,6 +293,11 @@ export function StoryGenerator() {
         isLoading={isLoading}
         isLoggedIn={isLoggedIn}
         onLogin={handleLogin}
+      />
+
+      <AuthModal
+        open={authModalOpen}
+        onOpenChange={setAuthModalOpen}
       />
 
       {/* Story Output */}
