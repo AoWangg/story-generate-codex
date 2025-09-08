@@ -23,6 +23,13 @@ import { getSupabase } from "@/lib/supabase";
 import ReactMarkdown from "react-markdown";
 import { StoryGenerationDialog } from "./story-generation-dialog";
 import { AuthModal } from "../auth/auth-modal";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 export function StoryGenerator() {
   const [theme, setTheme] = useState("");
@@ -34,6 +41,7 @@ export function StoryGenerator() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [resultOpen, setResultOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   // Check login status
@@ -86,36 +94,56 @@ export function StoryGenerator() {
   ) => {
     setIsGeneratingImage(true);
     try {
-      const response = await fetch("/api/image", {
+      // Step 1: Create async task
+      const createRes = await fetch("/api/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: `A beautiful illustration for a story about: ${prompt}`,
-          story: storyContent,
-        }),
+        body: JSON.stringify({ prompt, story: storyContent }),
       });
 
-      if (!response.ok) throw new Error("Failed to generate image");
+      if (!createRes.ok) throw new Error("Failed to create image task");
+      const createData = await createRes.json();
+      const taskId = createData.taskId as string | undefined;
+      if (!taskId) throw new Error("No taskId returned");
 
-      const data = await response.json();
+      // Step 2: Poll for result
+      const maxAttempts = 90; // ~3 minutes at 2s interval
+      const intervalMs = 2000;
+      let imageUrl: string | undefined;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        await new Promise((r) => setTimeout(r, intervalMs));
+        const statusRes = await fetch(`/api/image?task_id=${encodeURIComponent(taskId)}`);
+        if (!statusRes.ok) continue;
+        const statusData = await statusRes.json();
+        const status = statusData.status as string | undefined;
+        if (status === "SUCCEEDED" && statusData.imageUrl) {
+          imageUrl = statusData.imageUrl as string;
+          break;
+        }
+        if (status === "FAILED" || status === "CANCELED") {
+          break;
+        }
+      }
 
-      if (data.imageUrl) {
-        setGeneratedImage(data.imageUrl);
-
-        // Update story with image and save locally
-        const updatedStory = { ...story, imageUrl: data.imageUrl };
+      if (imageUrl) {
+        setGeneratedImage(imageUrl);
+        const updatedStory = { ...story, imageUrl };
         setCurrentStory(updatedStory);
         saveStory(updatedStory);
-        // Persist to Supabase if logged in
         persistToSupabase(updatedStory, storyContent);
-
         toast.success("Story and image generated successfully!");
+      } else {
+        // Save story without image if polling didn't finish
+        saveStory(story);
+        persistToSupabase(story, storyContent);
+        toast.success(
+          "Story generated! Image is still processing or failed."
+        );
       }
     } catch (error) {
       console.error("Error generating image:", error);
       // Save story without image
       saveStory(story);
-      // Persist to Supabase if logged in
       persistToSupabase(story, storyContent);
       toast.success(
         "Story generated! Image generation failed, but story was saved."
@@ -176,6 +204,7 @@ export function StoryGenerator() {
     const controller = new AbortController();
     abortRef.current = controller;
     setIsLoading(true);
+    setResultOpen(true);
 
     try {
       const res = await fetch("/api/generate", {
@@ -261,9 +290,9 @@ export function StoryGenerator() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" id="generator">
       {/* Story Generation Trigger */}
-      <Card>
+      <Card className="border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
@@ -277,12 +306,11 @@ export function StoryGenerator() {
               language, and start your creative journey!
             </p>
             <Button
-              size="lg"
               onClick={() => setDialogOpen(true)}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-lg hover:from-primary/90 hover:to-primary/70 py-6 text-base sm:text-lg"
             >
               <Plus className="h-4 w-4 mr-2" />
-              Start Creating Story
+              Generate a Story Now
             </Button>
           </div>
         </CardContent>
@@ -299,14 +327,12 @@ export function StoryGenerator() {
 
       <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} />
 
-      {/* Story Output */}
-      {(completion || isLoading) && (
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Text Content */}
-          <Card className="h-fit">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Generated Story</CardTitle>
+      {/* Story Output in Large Modal */}
+      <Dialog open={resultOpen && (isLoading || !!completion)} onOpenChange={setResultOpen}>
+        <DialogContent className="max-w-[1200px] w-[95vw] p-0 h-[85vh] flex flex-col overflow-hidden">
+            <DialogHeader className="px-6 pt-6 shrink-0">
+              <DialogTitle className="flex items-center justify-between w-full p-6">
+                <span>Your Story</span>
                 <div className="flex items-center gap-2">
                   {isLoading && (
                     <Button size="sm" variant="outline" onClick={handleStop}>
@@ -314,119 +340,109 @@ export function StoryGenerator() {
                     </Button>
                   )}
                   {theme && (
-                    <Badge variant="secondary" className="text-xs">
-                      Theme: {theme}
-                    </Badge>
+                    <Badge variant="secondary" className="text-xs">Theme: {theme}</Badge>
                   )}
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[50vh] sm:h-[400px] w-full">
-                <div className="prose prose-sm max-w-none dark:prose-invert">
-                  {completion ? (
-                    <div className="leading-relaxed text-foreground">
-                      <ReactMarkdown
-                        components={{
-                          h1: ({ children }) => (
-                            <h1 className="text-2xl font-bold mb-4 mt-6">
-                              {children}
-                            </h1>
-                          ),
-                          h2: ({ children }) => (
-                            <h2 className="text-xl font-semibold mb-3 mt-6">
-                              {children}
-                            </h2>
-                          ),
-                          h3: ({ children }) => (
-                            <h3 className="text-lg font-semibold mb-2 mt-4">
-                              {children}
-                            </h3>
-                          ),
-                          p: ({ children }) => (
-                            <p className="mb-4 leading-relaxed">{children}</p>
-                          ),
-                          strong: ({ children }) => (
-                            <strong className="font-bold">{children}</strong>
-                          ),
-                          em: ({ children }) => (
-                            <em className="italic">{children}</em>
-                          ),
-                          blockquote: ({ children }) => (
-                            <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic mb-4">
-                              {children}
-                            </blockquote>
-                          ),
-                        }}
-                      >
-                        {completion}
-                      </ReactMarkdown>
+              </DialogTitle>
+            </DialogHeader>
+            <ScrollArea className="flex-1 min-h-0">
+              <div className="p-6 grid md:grid-cols-2 gap-6">
+                {/* Text Content */}
+                <Card className="flex flex-col">
+                  <CardHeader className="pb-2 shrink-0">
+                    <CardTitle className="text-lg">Generated Story</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="prose prose-sm max-w-none dark:prose-invert">
+                      {completion ? (
+                        <div className="leading-relaxed text-foreground">
+                          <ReactMarkdown
+                            components={{
+                              h1: ({ children }) => (
+                                <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>
+                              ),
+                              h2: ({ children }) => (
+                                <h2 className="text-xl font-semibold mb-3 mt-6">{children}</h2>
+                              ),
+                              h3: ({ children }) => (
+                                <h3 className="text-lg font-semibold mb-2 mt-4">{children}</h3>
+                              ),
+                              p: ({ children }) => (
+                                <p className="mb-4 leading-relaxed">{children}</p>
+                              ),
+                              strong: ({ children }) => (
+                                <strong className="font-bold">{children}</strong>
+                              ),
+                              em: ({ children }) => <em className="italic">{children}</em>,
+                              blockquote: ({ children }) => (
+                                <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic mb-4">{children}</blockquote>
+                              ),
+                            }}
+                          >
+                            {completion}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-full" />
+                          <Skeleton className="h-4 w-5/6" />
+                          <Skeleton className="h-4 w-4/6" />
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-full" />
-                      <Skeleton className="h-4 w-5/6" />
-                      <Skeleton className="h-4 w-4/6" />
+                  {currentStory && (
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Save className="h-4 w-4" />
+                        Story automatically saved
+                      </div>
                     </div>
                   )}
-                </div>
-              </ScrollArea>
-              {currentStory && (
-                <div className="mt-4 pt-4 border-t">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Save className="h-4 w-4" />
-                    Story automatically saved
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  </CardContent>
+                </Card>
 
-          {/* Generated Image */}
-          <Card className="h-fit">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <ImageIcon className="h-5 w-5" />
-                  Generated Image
-                </CardTitle>
+                {/* Generated Image */}
+                <Card className="flex flex-col">
+                  <CardHeader className="pb-2 shrink-0">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <ImageIcon className="h-5 w-5" />
+                      Generated Image
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="rounded-lg overflow-hidden bg-muted flex items-center justify-center aspect-video md:aspect-auto md:h-[360px] lg:h-[420px]">
+                      {generatedImage ? (
+                        <img
+                          src={generatedImage}
+                          alt={`Illustration for: ${theme}`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : isGeneratingImage ? (
+                        <div className="text-center space-y-4">
+                          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+                          <p className="text-sm text-muted-foreground">Generating your story illustration...</p>
+                        </div>
+                      ) : completion && !isLoading ? (
+                        <div className="text-center space-y-2">
+                          <ImageIcon className="h-8 w-8 mx-auto text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">Image generation starting...</p>
+                        </div>
+                      ) : (
+                        <div className="text-center space-y-2">
+                          <ImageIcon className="h-8 w-8 mx-auto text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">Your story image will appear here</p>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="aspect-square w-full rounded-lg overflow-hidden bg-muted flex items-center justify-center">
-                {generatedImage ? (
-                  <img
-                    src={generatedImage}
-                    alt={`Illustration for: ${theme}`}
-                    className="w-full h-full object-cover"
-                  />
-                ) : isGeneratingImage ? (
-                  <div className="text-center space-y-4">
-                    <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-                    <p className="text-sm text-muted-foreground">
-                      Generating your story illustration...
-                    </p>
-                  </div>
-                ) : completion && !isLoading ? (
-                  <div className="text-center space-y-2">
-                    <ImageIcon className="h-8 w-8 mx-auto text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      Image generation starting...
-                    </p>
-                  </div>
-                ) : (
-                  <div className="text-center space-y-2">
-                    <ImageIcon className="h-8 w-8 mx-auto text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      Your story image will appear here
-                    </p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+            </ScrollArea>
+            <DialogFooter className="px-6 pb-6 shrink-0">
+              <Button variant="outline" onClick={() => setResultOpen(false)}>Close</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
