@@ -11,16 +11,21 @@ export const runtime = "edge";
 
 export async function POST(req: Request) {
   try {
-    const { prompt } = await req.json();
+    const { prompt, language = "chinese" } = await req.json();
 
-    console.log("prompt", prompt);
+    console.log("prompt", prompt, "language", language);
 
     if (!prompt) {
       return new Response("Missing prompt", { status: 400 });
     }
 
-    // Create a more detailed prompt for better story generation with markdown formatting
-    const storyPrompt = `Write a creative and engaging short story based on this theme: "${prompt}". 
+    // Create language-specific prompts
+    const isEnglish = language === "english";
+    const languageInstruction = isEnglish 
+      ? "Write the story in English." 
+      : "请用中文写故事。";
+
+    const storyPrompt = `${languageInstruction} Write a creative and engaging short story based on this theme: "${prompt}". 
 
 The story should be:
 - Approximately 300-500 words
@@ -50,7 +55,7 @@ Story:`;
         {
           role: "system",
           content:
-            "You are a creative storyteller who writes engaging, imaginative short stories. Write stories that are captivating, well-structured, and suitable for all audiences. Always format your stories using proper markdown syntax.",
+            "You are a creative storyteller who writes engaging, imaginative short stories. Write stories that are captivating, well-structured, and suitable for all audiences. Always format your stories using proper markdown syntax. When asked to write in Chinese, write completely in Chinese. When asked to write in English, write completely in English.",
         },
         {
           role: "user",

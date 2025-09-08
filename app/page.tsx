@@ -1,8 +1,8 @@
-import { StoryGenerator } from '@/components/story/story-generator';
-import { BookOpen, History } from 'lucide-react';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { AuthButton } from '@/components/auth/auth-button';
+import { StoryGenerator } from "@/components/story/story-generator";
+import { BookOpen, History } from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { AuthButton } from "@/components/auth/auth-button";
 
 export default function Home() {
   return (
@@ -15,7 +15,7 @@ export default function Home() {
               <BookOpen className="h-6 w-6 text-primary" />
               <h1 className="text-xl font-bold">AI Story Generator</h1>
             </div>
-            
+
             <div className="flex items-center gap-2">
               <Link href="/history">
                 <Button variant="outline" size="sm" className="gap-2">
@@ -38,9 +38,9 @@ export default function Home() {
               Create Amazing Stories with AI
             </h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Enter a simple theme and watch as AI crafts a unique story just for you, 
-              complete with beautiful illustrations. Your stories are automatically saved 
-              for you to enjoy anytime.
+              Enter a simple theme and watch as AI crafts a unique story just
+              for you, complete with beautiful illustrations. Your stories are
+              automatically saved for you to enjoy anytime.
             </p>
           </div>
 
@@ -48,15 +48,6 @@ export default function Home() {
           <StoryGenerator />
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="border-t mt-16">
-        <div className="container mx-auto py-8 px-4">
-          <div className="text-center text-sm text-muted-foreground">
-            <p>Powered by OpenAI and Supabase • Stories saved locally in your browser</p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

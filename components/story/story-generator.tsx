@@ -1,30 +1,77 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sparkles, Image as ImageIcon, Save, Loader2 } from "lucide-react";
+import {
+  Sparkles,
+  Image as ImageIcon,
+  Save,
+  Loader2,
+  Plus,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Story } from "@/types/story";
 import { saveStory } from "@/lib/storage";
 import { getSupabase } from "@/lib/supabase";
 import ReactMarkdown from "react-markdown";
+import { StoryGenerationDialog } from "./story-generation-dialog";
 
 export function StoryGenerator() {
   const [theme, setTheme] = useState("");
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [currentStory, setCurrentStory] = useState<Story | null>(null);
-  const [input, setInput] = useState("");
   const [completion, setCompletion] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Check login status
+  useEffect(() => {
+    checkLoginStatus();
+  }, []);
+
+  const checkLoginStatus = async () => {
+    const supabase = getSupabase();
+    if (!supabase) {
+      setIsLoggedIn(false);
+      return;
+    }
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setIsLoggedIn(!!user);
+    } catch (error) {
+      console.error("Error checking login status:", error);
+      setIsLoggedIn(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    // This will trigger the auth modal - you might need to import and use your auth modal component
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+      await supabase.auth.signInWithOAuth({
+        provider: "github",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      toast.error("Login failed, please try again");
+    }
+  };
 
   const generateImage = async (
     prompt: string,
@@ -112,11 +159,10 @@ export function StoryGenerator() {
     }
   };
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
+  const onSubmit = async (prompt: string, language: string) => {
+    if (!prompt.trim() || isLoading) return;
 
-    setTheme(input);
+    setTheme(prompt);
     setGeneratedImage(null);
     setCurrentStory(null);
     setCompletion("");
@@ -129,7 +175,7 @@ export function StoryGenerator() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: input }),
+        body: JSON.stringify({ prompt, language }),
         signal: controller.signal,
       });
 
@@ -148,10 +194,10 @@ export function StoryGenerator() {
           if (done) break;
 
           const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
-          
+          const lines = chunk.split("\n");
+
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
+            if (line.startsWith("data: ")) {
               try {
                 const data = JSON.parse(line.slice(6));
                 if (data.story) {
@@ -167,20 +213,21 @@ export function StoryGenerator() {
       }
 
       if (fullStoryText) {
-        const title = fullStoryText.split("\n")[0]?.substring(0, 50) || input;
+        const title = fullStoryText.split("\n")[0]?.substring(0, 50) || prompt;
         const story: Story = {
           id: uuidv4(),
-          theme: input,
+          theme: prompt,
           content: fullStoryText,
           title: title,
           createdAt: new Date().toISOString(),
         };
         setCurrentStory(story);
-        await generateImage(input, fullStoryText, story);
+        await generateImage(prompt, fullStoryText, story);
       }
     } catch (err) {
       if ((err as any)?.name !== "AbortError") {
         console.error("Error generating story:", err);
+        toast.error("Failed to generate story, please try again");
       }
     } finally {
       setIsLoading(false);
@@ -209,55 +256,40 @@ export function StoryGenerator() {
 
   return (
     <div className="space-y-6">
-      {/* Story Generation Form */}
+      {/* Story Generation Trigger */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
-            Generate Your Story
+            AI Story Generator
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={onSubmit} className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Enter your story theme (e.g., 'a penguin who dreams of flying')"
-                disabled={isLoading}
-                className="flex-1"
-              />
-              <Button
-                type="submit"
-                disabled={isLoading || !input.trim()}
-                size="default"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Generate
-                  </>
-                )}
-              </Button>
-              {isLoading && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleStop}
-                  size="default"
-                >
-                  Stop
-                </Button>
-              )}
-            </div>
-          </form>
+          <div className="text-center space-y-4">
+            <p className="text-muted-foreground">
+              Let AI create amazing stories for you. Enter your ideas, choose
+              language, and start your creative journey!
+            </p>
+            <Button
+              size="lg"
+              onClick={() => setDialogOpen(true)}
+              className="w-full sm:w-auto"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Start Creating Story
+            </Button>
+          </div>
         </CardContent>
       </Card>
+
+      <StoryGenerationDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onGenerate={onSubmit}
+        isLoading={isLoading}
+        isLoggedIn={isLoggedIn}
+        onLogin={handleLogin}
+      />
 
       {/* Story Output */}
       {(completion || isLoading) && (
@@ -267,11 +299,18 @@ export function StoryGenerator() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg">Generated Story</CardTitle>
-                {theme && (
-                  <Badge variant="secondary" className="text-xs">
-                    Theme: {theme}
-                  </Badge>
-                )}
+                <div className="flex items-center gap-2">
+                  {isLoading && (
+                    <Button size="sm" variant="outline" onClick={handleStop}>
+                      Stop Generation
+                    </Button>
+                  )}
+                  {theme && (
+                    <Badge variant="secondary" className="text-xs">
+                      Theme: {theme}
+                    </Badge>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -279,15 +318,37 @@ export function StoryGenerator() {
                 <div className="prose prose-sm max-w-none dark:prose-invert">
                   {completion ? (
                     <div className="leading-relaxed text-foreground">
-                      <ReactMarkdown 
+                      <ReactMarkdown
                         components={{
-                          h1: ({children}) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
-                          h2: ({children}) => <h2 className="text-xl font-semibold mb-3 mt-6">{children}</h2>,
-                          h3: ({children}) => <h3 className="text-lg font-semibold mb-2 mt-4">{children}</h3>,
-                          p: ({children}) => <p className="mb-4 leading-relaxed">{children}</p>,
-                          strong: ({children}) => <strong className="font-bold">{children}</strong>,
-                          em: ({children}) => <em className="italic">{children}</em>,
-                          blockquote: ({children}) => <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic mb-4">{children}</blockquote>,
+                          h1: ({ children }) => (
+                            <h1 className="text-2xl font-bold mb-4 mt-6">
+                              {children}
+                            </h1>
+                          ),
+                          h2: ({ children }) => (
+                            <h2 className="text-xl font-semibold mb-3 mt-6">
+                              {children}
+                            </h2>
+                          ),
+                          h3: ({ children }) => (
+                            <h3 className="text-lg font-semibold mb-2 mt-4">
+                              {children}
+                            </h3>
+                          ),
+                          p: ({ children }) => (
+                            <p className="mb-4 leading-relaxed">{children}</p>
+                          ),
+                          strong: ({ children }) => (
+                            <strong className="font-bold">{children}</strong>
+                          ),
+                          em: ({ children }) => (
+                            <em className="italic">{children}</em>
+                          ),
+                          blockquote: ({ children }) => (
+                            <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic mb-4">
+                              {children}
+                            </blockquote>
+                          ),
                         }}
                       >
                         {completion}
@@ -306,7 +367,7 @@ export function StoryGenerator() {
                 <div className="mt-4 pt-4 border-t">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Save className="h-4 w-4" />
-                    Story automatically saved to your browser
+                    Story automatically saved
                   </div>
                 </div>
               )}
