@@ -63,7 +63,7 @@ export function AuthButton() {
           className="gap-2"
         >
           <LogIn className="h-4 w-4" />
-          Sign In
+          Sign In with Email
         </Button>
         <AuthModal
           open={showAuthModal}

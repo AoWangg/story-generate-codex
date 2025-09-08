@@ -2,6 +2,7 @@ import { StoryGenerator } from '@/components/story/story-generator';
 import { BookOpen, History } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { AuthButton } from '@/components/auth/auth-button';
 
 export default function Home() {
   return (
@@ -22,7 +23,7 @@ export default function Home() {
                   <span className="hidden sm:inline">History</span>
                 </Button>
               </Link>
-              {null}
+              <AuthButton />
             </div>
           </div>
         </div>

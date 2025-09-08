@@ -13,6 +13,7 @@ import { Sparkles, Image as ImageIcon, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Story } from "@/types/story";
 import { saveStory } from "@/lib/storage";
+import { getSupabase } from "@/lib/supabase";
 
 export function StoryGenerator() {
   const [theme, setTheme] = useState("");
@@ -47,10 +48,12 @@ export function StoryGenerator() {
       if (data.imageUrl) {
         setGeneratedImage(data.imageUrl);
 
-        // Update story with image and save
+        // Update story with image and save locally
         const updatedStory = { ...story, imageUrl: data.imageUrl };
         setCurrentStory(updatedStory);
         saveStory(updatedStory);
+        // Persist to Supabase if logged in
+        persistToSupabase(updatedStory, storyContent);
 
         toast.success("Story and image generated successfully!");
       }
@@ -58,11 +61,53 @@ export function StoryGenerator() {
       console.error("Error generating image:", error);
       // Save story without image
       saveStory(story);
+      // Persist to Supabase if logged in
+      persistToSupabase(story, storyContent);
       toast.success(
         "Story generated! Image generation failed, but story was saved."
       );
     } finally {
       setIsGeneratingImage(false);
+    }
+  };
+
+  const persistToSupabase = async (story: Story, fullText: string) => {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Create a conversation per generation
+      const { data: conv, error: convErr } = await supabase
+        .from("conversations")
+        .insert({ user_id: user.id, title: story.title })
+        .select("id")
+        .single();
+      if (convErr || !conv) return;
+
+      const conversationId = conv.id;
+
+      // Insert user prompt and assistant story as two messages
+      const messages = [
+        {
+          conversation_id: conversationId,
+          user_id: user.id,
+          role: "user" as const,
+          content: story.theme,
+        },
+        {
+          conversation_id: conversationId,
+          user_id: user.id,
+          role: "assistant" as const,
+          content: fullText,
+        },
+      ];
+      await supabase.from("messages").insert(messages);
+    } catch (e) {
+      console.warn("Persist to Supabase failed:", e);
     }
   };
 
