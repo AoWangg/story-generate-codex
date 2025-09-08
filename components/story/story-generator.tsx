@@ -35,6 +35,19 @@ export function StoryGenerator() {
   // Check login status
   useEffect(() => {
     checkLoginStatus();
+    
+    // Listen for auth state changes
+    const supabase = getSupabase();
+    if (supabase) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        setIsLoggedIn(!!session?.user);
+        if (event === 'SIGNED_IN') {
+          checkLoginStatus(); // Refresh login status
+        }
+      });
+
+      return () => subscription.unsubscribe();
+    }
   }, []);
 
   const checkLoginStatus = async () => {

@@ -1,17 +1,27 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClientComponentClient, type SupabaseClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
 
 let supabaseClient: SupabaseClient | null = null;
 let supabaseAdminClient: SupabaseClient | null = null;
 
 export function getSupabase(): SupabaseClient | null {
+  if (typeof window === 'undefined') {
+    // Server-side: use regular client
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !anon) return null;
+    return createClient(url, anon);
+  }
+  
+  // Client-side: use auth helpers
   if (supabaseClient) return supabaseClient;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) {
+  try {
+    supabaseClient = createClientComponentClient();
+    return supabaseClient;
+  } catch (error) {
+    console.error('Error creating Supabase client:', error);
     return null;
   }
-  supabaseClient = createClient(url, anon);
-  return supabaseClient;
 }
 
 export function getSupabaseAdmin(): SupabaseClient | null {
