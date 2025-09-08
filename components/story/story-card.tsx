@@ -1,0 +1,166 @@
+'use client';
+
+import { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Trash2, 
+  Calendar, 
+  Image as ImageIcon,
+  Eye,
+  MoreHorizontal 
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Story } from '@/types/story';
+import { deleteStory } from '@/lib/storage';
+import { toast } from 'sonner';
+
+interface StoryCardProps {
+  story: Story;
+  onDelete: (storyId: string) => void;
+}
+
+export function StoryCard({ story, onDelete }: StoryCardProps) {
+  const [showDetails, setShowDetails] = useState(false);
+
+  const handleDelete = () => {
+    deleteStory(story.id);
+    onDelete(story.id);
+    toast.success('Story deleted successfully');
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getPreviewText = (content: string) => {
+    return content.length > 150 ? content.substring(0, 150) + '...' : content;
+  };
+
+  return (
+    <>
+      <Card className="h-full hover:shadow-lg transition-shadow">
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between gap-2">
+            <CardTitle className="text-base line-clamp-2 leading-tight">
+              {story.title}
+            </CardTitle>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setShowDetails(true)}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Full Story
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={handleDelete}
+                  className="text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Story
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          <Badge variant="outline" className="text-xs w-fit">
+            {story.theme}
+          </Badge>
+        </CardHeader>
+        
+        <CardContent className="space-y-3">
+          {/* Image Thumbnail */}
+          {story.imageUrl && (
+            <div className="aspect-video w-full rounded-md overflow-hidden bg-muted">
+              <img
+                src={story.imageUrl}
+                alt={`Illustration for ${story.title}`}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
+          
+          {/* Story Preview */}
+          <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
+            {getPreviewText(story.content)}
+          </p>
+          
+          <div className="flex items-center justify-between pt-2">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Calendar className="h-3 w-3" />
+              {formatDate(story.createdAt)}
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDetails(true)}
+              className="text-xs"
+            >
+              <Eye className="h-3 w-3 mr-1" />
+              Read
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Story Detail Modal */}
+      <Dialog open={showDetails} onOpenChange={setShowDetails}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="text-xl">{story.title}</DialogTitle>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Badge variant="outline">{story.theme}</Badge>
+              <span>•</span>
+              <Calendar className="h-4 w-4" />
+              {formatDate(story.createdAt)}
+            </div>
+          </DialogHeader>
+          
+          <div className="grid md:grid-cols-2 gap-6">
+            <ScrollArea className="h-[400px]">
+              <div className="prose prose-sm max-w-none">
+                <p className="whitespace-pre-wrap leading-relaxed text-foreground">
+                  {story.content}
+                </p>
+              </div>
+            </ScrollArea>
+            
+            {story.imageUrl && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <ImageIcon className="h-4 w-4" />
+                  Generated Illustration
+                </div>
+                <div className="aspect-square w-full rounded-lg overflow-hidden">
+                  <img
+                    src={story.imageUrl}
+                    alt={`Illustration for ${story.title}`}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
