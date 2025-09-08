@@ -13,10 +13,12 @@ import {
   Save,
   Loader2,
   Plus,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Story } from "@/types/story";
 import { saveStory } from "@/lib/storage";
+import { makeDownloadFilename } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabase";
 import ReactMarkdown from "react-markdown";
 import { StoryGenerationDialog } from "./story-generation-dialog";
@@ -258,6 +260,49 @@ export function StoryGenerator() {
     }
   };
 
+  const handleDownloadStory = () => {
+    const text = completion || currentStory?.content;
+    if (!text) return;
+    const filename = makeDownloadFilename(
+      currentStory?.title || theme || "",
+      "story",
+      "md"
+    );
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadImage = async () => {
+    if (!generatedImage) return;
+    try {
+      const res = await fetch(`/api/download-image?url=${encodeURIComponent(generatedImage)}`);
+      if (!res.ok) throw new Error("Failed to download image");
+      const blob = await res.blob();
+      const filename = makeDownloadFilename(
+        currentStory?.title || theme || "",
+        "story-image",
+        "png"
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error("Failed to download image");
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Story Generation Trigger */}
@@ -270,7 +315,7 @@ export function StoryGenerator() {
         </CardHeader>
         <CardContent>
           <div className="text-center space-y-4">
-            <p className="text-muted-foreground">
+            <p className="text-sm sm:text-base text-muted-foreground">
               Let AI create amazing stories for you. Enter your ideas, choose
               language, and start your creative journey!
             </p>
@@ -314,6 +359,12 @@ export function StoryGenerator() {
                       Stop Generation
                     </Button>
                   )}
+                  {(completion || currentStory) && (
+                    <Button size="sm" variant="outline" onClick={handleDownloadStory}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Download Story
+                    </Button>
+                  )}
                   {theme && (
                     <Badge variant="secondary" className="text-xs">
                       Theme: {theme}
@@ -323,7 +374,7 @@ export function StoryGenerator() {
               </div>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[400px] w-full">
+              <ScrollArea className="h-[50vh] sm:h-[400px] w-full">
                 <div className="prose prose-sm max-w-none dark:prose-invert">
                   {completion ? (
                     <div className="leading-relaxed text-foreground">
@@ -386,10 +437,18 @@ export function StoryGenerator() {
           {/* Generated Image */}
           <Card className="h-fit">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <ImageIcon className="h-5 w-5" />
-                Generated Image
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <ImageIcon className="h-5 w-5" />
+                  Generated Image
+                </CardTitle>
+                {generatedImage && (
+                  <Button size="sm" variant="outline" onClick={handleDownloadImage} className="hidden sm:inline-flex">
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Image
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="aspect-square w-full rounded-lg overflow-hidden bg-muted flex items-center justify-center">
@@ -422,6 +481,14 @@ export function StoryGenerator() {
                   </div>
                 )}
               </div>
+              {generatedImage && (
+                <div className="mt-3 sm:hidden">
+                  <Button size="sm" variant="outline" onClick={handleDownloadImage} className="w-full">
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Image
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

@@ -9,7 +9,8 @@ import {
   Calendar, 
   Image as ImageIcon,
   Eye,
-  MoreHorizontal 
+  MoreHorizontal,
+  Download,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -21,6 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Story } from '@/types/story';
 import { deleteStory } from '@/lib/storage';
+import { makeDownloadFilename } from '@/lib/utils';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 
@@ -31,6 +33,39 @@ interface StoryCardProps {
 
 export function StoryCard({ story, onDelete }: StoryCardProps) {
   const [showDetails, setShowDetails] = useState(false);
+
+  const handleDownloadStory = () => {
+    const filename = makeDownloadFilename(story.title || story.theme || '', 'story', 'md');
+    const blob = new Blob([story.content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadImage = async () => {
+    if (!story.imageUrl) return;
+    try {
+      const res = await fetch(`/api/download-image?url=${encodeURIComponent(story.imageUrl)}`);
+      if (!res.ok) throw new Error('Failed');
+      const blob = await res.blob();
+      const filename = makeDownloadFilename(story.title || story.theme || '', 'story-image', 'png');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error('Failed to download image');
+    }
+  };
 
   const handleDelete = () => {
     deleteStory(story.id);
@@ -81,6 +116,16 @@ export function StoryCard({ story, onDelete }: StoryCardProps) {
                   <Eye className="h-4 w-4 mr-2" />
                   View Full Story
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleDownloadStory}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Download Story
+                </DropdownMenuItem>
+                {story.imageUrl && (
+                  <DropdownMenuItem onClick={handleDownloadImage}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Image
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem 
                   onClick={handleDelete}
                   className="text-destructive"
@@ -134,19 +179,35 @@ export function StoryCard({ story, onDelete }: StoryCardProps) {
 
       {/* Story Detail Modal */}
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
-        <DialogContent className="max-w-4xl max-h-[80vh]">
+        <DialogContent className="max-w-full sm:max-w-4xl max-h-[85vh] p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle className="text-xl">{story.title}</DialogTitle>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Badge variant="outline">{story.theme}</Badge>
-              <span>•</span>
-              <Calendar className="h-4 w-4" />
-              {formatDate(story.createdAt)}
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <DialogTitle className="text-xl">{story.title}</DialogTitle>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                  <Badge variant="outline">{story.theme}</Badge>
+                  <span>•</span>
+                  <Calendar className="h-4 w-4" />
+                  {formatDate(story.createdAt)}
+                </div>
+              </div>
+              <div className="hidden sm:flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={handleDownloadStory}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Download Story
+                </Button>
+                {story.imageUrl && (
+                  <Button size="sm" variant="outline" onClick={handleDownloadImage}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Image
+                  </Button>
+                )}
+              </div>
             </div>
           </DialogHeader>
           
-          <div className="grid md:grid-cols-2 gap-6">
-            <ScrollArea className="h-[400px]">
+          <div className="grid gap-6 md:grid-cols-2">
+            <ScrollArea className="h-[50vh] sm:h-[400px]">
               <div className="prose prose-sm max-w-none dark:prose-invert">
                 <ReactMarkdown 
                   components={{
@@ -179,6 +240,24 @@ export function StoryCard({ story, onDelete }: StoryCardProps) {
                 </div>
               </div>
             )}
+          </div>
+          {/* Mobile sticky action bar */}
+          <div className="sm:hidden sticky bottom-0 left-0 right-0 bg-background border-t mt-2 -mb-2 -mx-2 px-2 pt-2 pb-3">
+            <div className="grid gap-2">
+              <Button onClick={handleDownloadStory} className="w-full" variant="secondary">
+                <Download className="h-4 w-4 mr-2" />
+                Download Story
+              </Button>
+              {story.imageUrl && (
+                <Button onClick={handleDownloadImage} className="w-full" variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  Download Image
+                </Button>
+              )}
+              <Button onClick={handleDelete} className="w-full" variant="destructive">
+                Delete
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
