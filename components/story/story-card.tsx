@@ -22,6 +22,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Story } from '@/types/story';
 import { deleteStory } from '@/lib/storage';
 import { toast } from 'sonner';
+import ReactMarkdown from 'react-markdown';
 
 interface StoryCardProps {
   story: Story;
@@ -48,7 +49,17 @@ export function StoryCard({ story, onDelete }: StoryCardProps) {
   };
 
   const getPreviewText = (content: string) => {
-    return content.length > 150 ? content.substring(0, 150) + '...' : content;
+    // Remove markdown formatting for preview
+    const plainText = content
+      .replace(/^#{1,6}\s+/gm, '') // Remove headers
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
+      .replace(/\*(.*?)\*/g, '$1') // Remove italics
+      .replace(/^>\s+/gm, '') // Remove blockquotes
+      .replace(/\n\n+/g, ' ') // Replace multiple newlines with space
+      .replace(/\n/g, ' ') // Replace single newlines with space
+      .trim();
+    
+    return plainText.length > 150 ? plainText.substring(0, 150) + '...' : plainText;
   };
 
   return (
@@ -136,10 +147,20 @@ export function StoryCard({ story, onDelete }: StoryCardProps) {
           
           <div className="grid md:grid-cols-2 gap-6">
             <ScrollArea className="h-[400px]">
-              <div className="prose prose-sm max-w-none">
-                <p className="whitespace-pre-wrap leading-relaxed text-foreground">
+              <div className="prose prose-sm max-w-none dark:prose-invert">
+                <ReactMarkdown 
+                  components={{
+                    h1: ({children}) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
+                    h2: ({children}) => <h2 className="text-xl font-semibold mb-3 mt-6">{children}</h2>,
+                    h3: ({children}) => <h3 className="text-lg font-semibold mb-2 mt-4">{children}</h3>,
+                    p: ({children}) => <p className="mb-4 leading-relaxed">{children}</p>,
+                    strong: ({children}) => <strong className="font-bold">{children}</strong>,
+                    em: ({children}) => <em className="italic">{children}</em>,
+                    blockquote: ({children}) => <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic mb-4">{children}</blockquote>,
+                  }}
+                >
                   {story.content}
-                </p>
+                </ReactMarkdown>
               </div>
             </ScrollArea>
             
