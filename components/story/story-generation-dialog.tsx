@@ -46,11 +46,6 @@ export function StoryGenerationDialog({
     e.preventDefault();
     if (!prompt.trim()) return;
 
-    if (!isLoggedIn) {
-      onLogin();
-      return;
-    }
-
     // Close dialog immediately when starting generation
     onOpenChange(false);
     
@@ -126,11 +121,16 @@ export function StoryGenerationDialog({
                 </div>
                 <div className="text-sm">
                   <p className="text-amber-800 dark:text-amber-200 font-medium">
-                    Login required to generate stories
+                    You are not logged in
                   </p>
                   <p className="text-amber-700 dark:text-amber-300 mt-1">
-                    Login to save your story creation history and enjoy better service experience.
+                    You can still generate stories. They will be saved locally. Login to sync and keep history across devices.
                   </p>
+                  <div className="mt-3">
+                    <Button variant="outline" size="sm" type="button" onClick={onLogin}>
+                      Login to Sync
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -155,11 +155,6 @@ export function StoryGenerationDialog({
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   Generating...
-                </>
-              ) : !isLoggedIn ? (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Login & Generate
                 </>
               ) : (
                 <>
