@@ -13,16 +13,14 @@ export async function POST(req: Request) {
   try {
     const { prompt, language = "chinese" } = await req.json();
 
-    console.log("prompt", prompt, "language", language);
-
     if (!prompt) {
       return new Response("Missing prompt", { status: 400 });
     }
 
     // Create language-specific prompts
     const isEnglish = language === "english";
-    const languageInstruction = isEnglish 
-      ? "Write the story in English." 
+    const languageInstruction = isEnglish
+      ? "Write the story in English."
       : "请用中文写故事。";
 
     const storyPrompt = `${languageInstruction} Write a creative and engaging short story based on this theme: "${prompt}". 
@@ -47,7 +45,6 @@ Theme: ${prompt}
 Story:`;
 
     // Request a streaming completion
-    console.log("storyPrompt", storyPrompt);
     const response = await openai.chat.completions.create({
       model: "qwen-plus",
       stream: true,
@@ -72,7 +69,7 @@ Story:`;
       async start(controller) {
         try {
           for await (const chunk of response) {
-            const content = chunk.choices[0]?.delta?.content || '';
+            const content = chunk.choices[0]?.delta?.content || "";
             if (content) {
               // Send each chunk as JSON with story field
               const data = JSON.stringify({ story: content });
@@ -81,7 +78,7 @@ Story:`;
           }
           controller.close();
         } catch (error) {
-          console.error('Streaming error:', error);
+          console.error("Streaming error:", error);
           controller.error(error);
         }
       },
@@ -89,9 +86,9 @@ Story:`;
 
     return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        'X-Accel-Buffering': 'no',
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
       },
     });
   } catch (error) {

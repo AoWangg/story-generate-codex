@@ -43,6 +43,7 @@ export function StoryGenerator() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const remoteStoryIdRef = useRef<string | null>(null);
 
   // Check login status
   useEffect(() => {
@@ -130,11 +131,15 @@ export function StoryGenerator() {
         const updatedStory = { ...story, imageUrl };
         setCurrentStory(updatedStory);
         saveStory(updatedStory);
+        // Update Supabase story row with image_url if logged in
+        await syncSupabaseStoryRow(updatedStory, storyContent, imageUrl);
+        // Also log to chat schema
         persistToSupabase(updatedStory, storyContent);
         toast.success("Story and image generated successfully!");
       } else {
         // Save story without image if polling didn't finish
         saveStory(story);
+        await syncSupabaseStoryRow(story, storyContent, null);
         persistToSupabase(story, storyContent);
         toast.success(
           "Story generated! Image is still processing or failed."
@@ -144,12 +149,60 @@ export function StoryGenerator() {
       console.error("Error generating image:", error);
       // Save story without image
       saveStory(story);
+      await syncSupabaseStoryRow(story, storyContent, null);
       persistToSupabase(story, storyContent);
       toast.success(
         "Story generated! Image generation failed, but story was saved."
       );
     } finally {
       setIsGeneratingImage(false);
+    }
+  };
+
+  // Insert or update Supabase stories row to include text/image
+  const syncSupabaseStoryRow = async (
+    story: Story,
+    fullText: string,
+    imageUrl: string | null
+  ) => {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      if (remoteStoryIdRef.current) {
+        // Update existing row with latest fields (especially image_url)
+        await supabase
+          .from("stories")
+          .update({
+            title: story.title,
+            theme: story.theme,
+            content: fullText,
+            image_url: imageUrl ?? null,
+          })
+          .eq("id", remoteStoryIdRef.current);
+      } else {
+        const { data, error } = await supabase
+          .from("stories")
+          .insert({
+            user_id: user.id,
+            title: story.title,
+            theme: story.theme,
+            content: fullText,
+            image_url: imageUrl ?? null,
+          })
+          .select("id")
+          .single();
+        if (!error && data?.id) {
+          remoteStoryIdRef.current = String(data.id);
+        }
+      }
+    } catch (e) {
+      // Non-fatal: keep local
+      console.warn("Sync to Supabase stories failed:", e);
     }
   };
 
@@ -257,6 +310,9 @@ export function StoryGenerator() {
           createdAt: new Date().toISOString(),
         };
         setCurrentStory(story);
+        // Ensure a Supabase stories row exists (no image yet)
+        remoteStoryIdRef.current = null;
+        await syncSupabaseStoryRow(story, fullStoryText, null);
         await generateImage(prompt, fullStoryText, story);
       }
     } catch (err) {
@@ -285,6 +341,9 @@ export function StoryGenerator() {
       };
 
       setCurrentStory(story);
+      remoteStoryIdRef.current = null;
+      // Fire and forget: create stories row without image; image update will follow
+      syncSupabaseStoryRow(story, completion, null);
       generateImage(theme, completion, story);
     }
   };

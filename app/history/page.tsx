@@ -15,7 +15,12 @@ import {
 import { AuthButton } from "@/components/auth/auth-button";
 import { StoryCard } from "@/components/story/story-card";
 import { Story } from "@/types/story";
-import { getStoredStories, deleteStory } from "@/lib/storage";
+import {
+  getStoredStories,
+  deleteStory as deleteLocalStory,
+} from "@/lib/storage";
+import { getSupabase } from "@/lib/supabase";
+import { listUserStories, deleteUserStory, clearUserStories } from "@/lib/remote-stories";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -32,25 +37,105 @@ import {
 export default function HistoryPage() {
   const [stories, setStories] = useState<Story[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    const loadStories = () => {
-      const storedStories = getStoredStories();
-      setStories(storedStories);
-      setLoading(false);
+    let unsub: { unsubscribe: () => void } | null = null;
+
+    const init = async () => {
+      const supabase = getSupabase();
+      if (!supabase) {
+        loadLocal();
+        setIsLoggedIn(false);
+        return;
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setIsLoggedIn(!!user);
+      if (user) {
+        await loadRemote(user.id);
+      } else {
+        loadLocal();
+      }
+
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
+        const authed = !!session?.user;
+        setIsLoggedIn(authed);
+        if (authed) {
+          loadRemote(session.user.id);
+        } else {
+          loadLocal();
+        }
+      });
+      unsub = subscription;
     };
 
-    loadStories();
+    init();
+    return () => {
+      unsub?.unsubscribe?.();
+    };
   }, []);
 
-  const handleDeleteStory = (storyId: string) => {
+  const loadLocal = () => {
+    const storedStories = getStoredStories();
+    setStories(storedStories);
+    setLoading(false);
+  };
+
+  const loadRemote = async (userId: string) => {
+    try {
+      const supabase = getSupabase();
+      if (!supabase) return loadLocal();
+      setLoading(true);
+      const results = await listUserStories(userId);
+      setStories(results);
+    } catch (e) {
+      console.warn("Failed loading remote stories, falling back to local:", e);
+      loadLocal();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  const handleDeleteStory = async (storyId: string) => {
+    if (isLoggedIn) {
+      try {
+        await deleteUserStory(storyId);
+        toast.success("Story deleted successfully");
+      } catch (e) {
+        toast.error("Failed to delete story from account");
+      }
+    } else {
+      deleteLocalStory(storyId);
+      toast.success("Story deleted successfully");
+    }
     setStories((prev) => prev.filter((story) => story.id !== storyId));
   };
 
-  const handleClearAllStories = () => {
-    localStorage.removeItem("ai-stories");
-    setStories([]);
-    toast.success("All stories deleted successfully");
+  const handleClearAllStories = async () => {
+    if (isLoggedIn) {
+      try {
+        const supabase = getSupabase();
+        if (!supabase) return;
+        const { data: userInfo } = await supabase.auth.getUser();
+        const userId = userInfo?.user?.id;
+        if (!userId) return;
+        await clearUserStories(userId);
+        setStories([]);
+        toast.success("All stories cleared from your account");
+      } catch (e) {
+        toast.error("Failed to clear stories from account");
+      }
+    } else {
+      localStorage.removeItem("ai-stories");
+      setStories([]);
+      toast.success("All stories deleted successfully");
+    }
   };
 
   if (loading) {
@@ -101,7 +186,7 @@ export default function HistoryPage() {
             </h1>
             <p className="text-muted-foreground">
               {stories.length} {stories.length === 1 ? "story" : "stories"}{" "}
-              saved in your browser
+              saved {isLoggedIn ? "in your account" : "in your browser"}
             </p>
           </div>
 
