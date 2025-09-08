@@ -260,49 +260,6 @@ export function StoryGenerator() {
     }
   };
 
-  const handleDownloadStory = () => {
-    const text = completion || currentStory?.content;
-    if (!text) return;
-    const filename = makeDownloadFilename(
-      currentStory?.title || theme || "",
-      "story",
-      "md"
-    );
-    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleDownloadImage = async () => {
-    if (!generatedImage) return;
-    try {
-      const res = await fetch(`/api/download-image?url=${encodeURIComponent(generatedImage)}`);
-      if (!res.ok) throw new Error("Failed to download image");
-      const blob = await res.blob();
-      const filename = makeDownloadFilename(
-        currentStory?.title || theme || "",
-        "story-image",
-        "png"
-      );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      toast.error("Failed to download image");
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Story Generation Trigger */}
@@ -340,10 +297,7 @@ export function StoryGenerator() {
         onLogin={handleLogin}
       />
 
-      <AuthModal
-        open={authModalOpen}
-        onOpenChange={setAuthModalOpen}
-      />
+      <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} />
 
       {/* Story Output */}
       {(completion || isLoading) && (
@@ -357,12 +311,6 @@ export function StoryGenerator() {
                   {isLoading && (
                     <Button size="sm" variant="outline" onClick={handleStop}>
                       Stop Generation
-                    </Button>
-                  )}
-                  {(completion || currentStory) && (
-                    <Button size="sm" variant="outline" onClick={handleDownloadStory}>
-                      <Download className="h-4 w-4 mr-2" />
-                      Download Story
                     </Button>
                   )}
                   {theme && (
@@ -442,12 +390,6 @@ export function StoryGenerator() {
                   <ImageIcon className="h-5 w-5" />
                   Generated Image
                 </CardTitle>
-                {generatedImage && (
-                  <Button size="sm" variant="outline" onClick={handleDownloadImage} className="hidden sm:inline-flex">
-                    <Download className="h-4 w-4 mr-2" />
-                    Download Image
-                  </Button>
-                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -481,14 +423,6 @@ export function StoryGenerator() {
                   </div>
                 )}
               </div>
-              {generatedImage && (
-                <div className="mt-3 sm:hidden">
-                  <Button size="sm" variant="outline" onClick={handleDownloadImage} className="w-full">
-                    <Download className="h-4 w-4 mr-2" />
-                    Download Image
-                  </Button>
-                </div>
-              )}
             </CardContent>
           </Card>
         </div>
