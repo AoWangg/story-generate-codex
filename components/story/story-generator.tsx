@@ -331,7 +331,7 @@ export function StoryGenerator() {
       <Dialog open={resultOpen && (isLoading || !!completion)} onOpenChange={setResultOpen}>
         <DialogContent className="max-w-[1200px] w-[95vw] p-0 h-[85vh] flex flex-col overflow-hidden">
             <DialogHeader className="px-6 pt-6 shrink-0">
-              <DialogTitle className="flex items-center justify-between w-full p-6">
+              <DialogTitle className="flex items-center justify-between w-full py-6">
                 <span>Your Story</span>
                 <div className="flex items-center gap-2">
                   {isLoading && (
