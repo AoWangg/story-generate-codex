@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { Story } from "@/types/story";
 import { saveStory } from "@/lib/storage";
 import { getSupabase } from "@/lib/supabase";
+import ReactMarkdown from "react-markdown";
 
 export function StoryGenerator() {
   const [theme, setTheme] = useState("");
@@ -136,21 +137,46 @@ export function StoryGenerator() {
         throw new Error("Failed to generate story");
       }
 
-      const data = await res.json();
-      const storyText: string = data?.story || data?.completion || "";
-      setCompletion(storyText);
+      // Handle streaming response
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullStoryText = "";
 
-      if (storyText) {
-        const title = storyText.split("\n")[0]?.substring(0, 50) || input;
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.story) {
+                  fullStoryText += data.story;
+                  setCompletion(fullStoryText);
+                }
+              } catch (e) {
+                // Skip malformed JSON
+              }
+            }
+          }
+        }
+      }
+
+      if (fullStoryText) {
+        const title = fullStoryText.split("\n")[0]?.substring(0, 50) || input;
         const story: Story = {
           id: uuidv4(),
           theme: input,
-          content: storyText,
+          content: fullStoryText,
           title: title,
           createdAt: new Date().toISOString(),
         };
         setCurrentStory(story);
-        await generateImage(input, storyText, story);
+        await generateImage(input, fullStoryText, story);
       }
     } catch (err) {
       if ((err as any)?.name !== "AbortError") {
@@ -250,11 +276,23 @@ export function StoryGenerator() {
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-[400px] w-full">
-                <div className="prose prose-sm max-w-none">
+                <div className="prose prose-sm max-w-none dark:prose-invert">
                   {completion ? (
-                    <p className="whitespace-pre-wrap leading-relaxed text-foreground">
-                      {completion}
-                    </p>
+                    <div className="leading-relaxed text-foreground">
+                      <ReactMarkdown 
+                        components={{
+                          h1: ({children}) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
+                          h2: ({children}) => <h2 className="text-xl font-semibold mb-3 mt-6">{children}</h2>,
+                          h3: ({children}) => <h3 className="text-lg font-semibold mb-2 mt-4">{children}</h3>,
+                          p: ({children}) => <p className="mb-4 leading-relaxed">{children}</p>,
+                          strong: ({children}) => <strong className="font-bold">{children}</strong>,
+                          em: ({children}) => <em className="italic">{children}</em>,
+                          blockquote: ({children}) => <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic mb-4">{children}</blockquote>,
+                        }}
+                      >
+                        {completion}
+                      </ReactMarkdown>
+                    </div>
                   ) : (
                     <div className="space-y-2">
                       <Skeleton className="h-4 w-full" />

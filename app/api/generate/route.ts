@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       return new Response("Missing prompt", { status: 400 });
     }
 
-    // Create a more detailed prompt for better story generation
+    // Create a more detailed prompt for better story generation with markdown formatting
     const storyPrompt = `Write a creative and engaging short story based on this theme: "${prompt}". 
 
 The story should be:
@@ -28,21 +28,29 @@ The story should be:
 - Engaging and imaginative
 - Suitable for all ages
 - Written in an engaging narrative style
+- Formatted in markdown with proper headings, paragraphs, and styling
+
+Please format the story using markdown syntax:
+- Use # for the story title
+- Use ## for chapter/section headings if applicable
+- Use proper paragraph breaks
+- Use *italics* and **bold** for emphasis where appropriate
+- Use > for quotes if needed
 
 Theme: ${prompt}
 
 Story:`;
 
-    // Request a non-streaming completion
+    // Request a streaming completion
     console.log("storyPrompt", storyPrompt);
     const response = await openai.chat.completions.create({
       model: "qwen-plus",
-      stream: false,
+      stream: true,
       messages: [
         {
           role: "system",
           content:
-            "You are a creative storyteller who writes engaging, imaginative short stories. Write stories that are captivating, well-structured, and suitable for all audiences.",
+            "You are a creative storyteller who writes engaging, imaginative short stories. Write stories that are captivating, well-structured, and suitable for all audiences. Always format your stories using proper markdown syntax.",
         },
         {
           role: "user",
@@ -53,8 +61,33 @@ Story:`;
       temperature: 0.7,
     });
 
-    const text = response.choices?.[0]?.message?.content ?? "";
-    return Response.json({ story: text });
+    // Create a ReadableStream to handle streaming response
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of response) {
+            const content = chunk.choices[0]?.delta?.content || '';
+            if (content) {
+              // Send each chunk as JSON with story field
+              const data = JSON.stringify({ story: content });
+              controller.enqueue(`data: ${data}\n\n`);
+            }
+          }
+          controller.close();
+        } catch (error) {
+          console.error('Streaming error:', error);
+          controller.error(error);
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
   } catch (error) {
     console.error("Error in story generation:", error);
     return new Response("Error generating story", { status: 500 });
